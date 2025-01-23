@@ -67,27 +67,22 @@ jobs:
           }
         }
 
-        $EncryptionKey = [System.Text.Encoding]::UTF8.GetBytes("${{ secrets.ENCRYPTION_KEY }}")
+        # Get GitHub Actions run ID
+        $run_id = $env:GITHUB_RUN_ID
 
-        $plaintext = $tunnelURL
-        $aes = New-Object System.Security.Cryptography.AesManaged
-        $aes.KeySize = 256
-        $aes.BlockSize = 128
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = $EncryptionKey
-        $aes.GenerateIV()
-        $IV = $aes.IV
-        $encryptor = $aes.CreateEncryptor($aes.Key, $aes.IV)
-        $plaintextBytes = [System.Text.Encoding]::UTF8.GetBytes($plaintext)
-        $encryptedBytes = $encryptor.TransformFinalBlock($plaintextBytes, 0, $plaintextBytes.Length)
+        # Send tunnel URL to the server
+        $server_url = "${{ secrets.SERVER_URL }}/update-run/$run_id"
+        $server_secret = "${{ secrets.SERVER_SECRET }}"
+        $headers = @{
+          "Authorization" = "Bearer $server_secret"
+          "Content-Type"  = "application/json"
+        }
+        $body = @{
+          "tunnel_url" = $tunnelURL
+        } | ConvertTo-Json
 
-        $final = New-Object System.IO.MemoryStream
-        $final.Write($IV, 0, $IV.Length)
-        $final.Write($encryptedBytes, 0, $encryptedBytes.Length)
-        $encryptedBase64 = [System.Convert]::ToBase64String($final.ToArray())
-        
-        Write-Host "ENCRYPTED_TUNNEL_URL=$encryptedBase64"
+        Invoke-RestMethod -Uri $server_url -Method POST -Headers $headers -Body $body
+
       continue-on-error: true
 
     - name: Download
@@ -114,26 +109,6 @@ jobs:
 
         Add-Content -Path $env:GITHUB_ENV -Value "TUNNEL_IP=$ipAddress"
 
-        $EncryptionKey = [System.Text.Encoding]::UTF8.GetBytes("${{ secrets.ENCRYPTION_KEY }}")
-        $plaintext = $ipAddress
-        $aes = New-Object System.Security.Cryptography.AesManaged
-        $aes.KeySize = 256
-        $aes.BlockSize = 128
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = $EncryptionKey
-        $aes.GenerateIV()
-        $IV = $aes.IV
-        $encryptor = $aes.CreateEncryptor($aes.Key, $aes.IV)
-        $plaintextBytes = [System.Text.Encoding]::UTF8.GetBytes($plaintext)
-        $encryptedBytes = $encryptor.TransformFinalBlock($plaintextBytes, 0, $plaintextBytes.Length)
-
-        $final = New-Object System.IO.MemoryStream
-        $final.Write($IV, 0, $IV.Length)
-        $final.Write($encryptedBytes, 0, $encryptedBytes.Length)
-        $encryptedBase64 = [System.Convert]::ToBase64String($final.ToArray())
-
-        Write-Host "ENCRYPTED_IP=$encryptedBase64"
       continue-on-error: true
 
     - name: Create
@@ -150,33 +125,6 @@ jobs:
         "@
         
         Set-Content -Path "C:\Users\Public\Desktop\Configure_Cloudflare_WARP.bat" -Value $batchContent
-      continue-on-error: true
-
-    - name: Fetch
-      shell: pwsh
-      run: |
-        $publicIP = Invoke-RestMethod -Uri 'https://api.ipify.org?format=json' | Select-Object -ExpandProperty ip
-
-        $EncryptionKey = [System.Text.Encoding]::UTF8.GetBytes("${{ secrets.ENCRYPTION_KEY }}")
-        $plaintext = $publicIP
-        $aes = New-Object System.Security.Cryptography.AesManaged
-        $aes.KeySize = 256
-        $aes.BlockSize = 128
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = $EncryptionKey
-        $aes.GenerateIV()
-        $IV = $aes.IV
-        $encryptor = $aes.CreateEncryptor($aes.Key, $aes.IV)
-        $plaintextBytes = [System.Text.Encoding]::UTF8.GetBytes($plaintext)
-        $encryptedBytes = $encryptor.TransformFinalBlock($plaintextBytes, 0, $plaintextBytes.Length)
-
-        $final = New-Object System.IO.MemoryStream
-        $final.Write($IV, 0, $IV.Length)
-        $final.Write($encryptedBytes, 0, $encryptedBytes.Length)
-        $encryptedBase64 = [System.Convert]::ToBase64String($final.ToArray())
-
-        Write-Host "ENCRYPTED_PUBLIC_IP=$encryptedBase64"
       continue-on-error: true
 
     - name: Keep
