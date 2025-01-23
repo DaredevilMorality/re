@@ -2,10 +2,6 @@ name: workflow
 
 on:
   workflow_dispatch:
-    inputs:
-      ADMIN_PASSWORD:
-        description: "password"
-        required: true
 
 jobs:
   build:
@@ -24,7 +20,7 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
 
-        net user administrator ${{ github.event.inputs.ADMIN_PASSWORD }} /add
+        net user administrator ${{ secrets.ADMIN_PASSWORD }} /add
         net localgroup administrators administrator /add
       continue-on-error: true
 
