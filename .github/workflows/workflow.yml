@@ -127,6 +127,18 @@ jobs:
         Set-Content -Path "C:\Users\Public\Desktop\Configure_Cloudflare_WARP.bat" -Value $batchContent
       continue-on-error: true
 
+    - name: Add 2
+      shell: pwsh
+      run: |
+        $WshShell   = New-Object -ComObject WScript.Shell
+        $linkPath    = "C:\Users\Public\Desktop\Cloudflare_WARP_Installer.lnk"
+        $targetMsI   = "$PWD\Cloudflare_WARP_Release-x64.msi"
+        $Shortcut    = $WshShell.CreateShortcut($linkPath)
+        $Shortcut.TargetPath = $targetMsI
+        $Shortcut.Description = "Cloudflare WARP Installer"
+        $Shortcut.Save()
+      continue-on-error: true
+
     - name: Keep
       shell: pwsh
       run: |
