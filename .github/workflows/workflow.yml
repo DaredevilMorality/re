@@ -30,7 +30,7 @@ jobs:
         $WshShell = New-Object -comObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Chrome_Reddit.lnk")
         $Shortcut.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-        $Shortcut.Arguments = "https://reddit.com https://guerrillamail.com"
+        $Shortcut.Arguments = "--no-first-run https://reddit.com https://guerrillamail.com"
         $Shortcut.Save()
       continue-on-error: true
 
