@@ -24,6 +24,27 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
+    - name: Force Dark Mode + Black Background
+      shell: pwsh
+      run: |
+        # dark‑mode keys (system‑wide, default profile, current user)
+        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"          /v AppsUseLightTheme    /t REG_DWORD /d 0 /f
+        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"          /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"  /v AppsUseLightTheme    /t REG_DWORD /d 0 /f
+        reg add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"  /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"          /v AppsUseLightTheme    /t REG_DWORD /d 0 /f
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"          /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+
+        # solid‑black background (default profile + current user)
+        reg add "HKU\.DEFAULT\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg add "HKU\.DEFAULT\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+        reg add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+
+        # apply changes without logoff
+        rundll32.exe user32.dll,UpdatePerUserSystemParameters 1,True
+      continue-on-error: true
+
     - name: Add 
       shell: pwsh
       run: |
@@ -137,20 +158,6 @@ jobs:
         $Shortcut.TargetPath = $targetMsI
         $Shortcut.Description = "Cloudflare WARP Installer"
         $Shortcut.Save()
-      continue-on-error: true
-
-    - name: Personalize Dark Mode and Black Background
-      shell: pwsh
-      run: |
-        # Enable Dark Mode
-        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
-        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme"    -Type DWord -Value 0
-        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Type DWord -Value 0
-
-        # Set solid black desktop
-        Set-ItemProperty -Path "HKCU:\Control Panel\Colors"  -Name "Background" -Value "0 0 0"
-        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "WallPaper"  -Value ""
-        RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters ,1 ,True
       continue-on-error: true
 
     - name: Keep
