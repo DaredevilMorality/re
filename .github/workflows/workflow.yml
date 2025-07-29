@@ -24,22 +24,53 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Dark mode + black desktop
+    - name: Configure Desktop and Theme
       shell: pwsh
       run: |
-        # Dark mode (system + apps)
-        $p='HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-        New-Item -Path $p -Force | Out-Null
-        Set-ItemProperty -Path $p -Name AppsUseLightTheme -Type DWord -Value 0
-        Set-ItemProperty -Path $p -Name SystemUsesLightTheme -Type DWord -Value 0
+        # This script modifies the Default User registry hive.
+        # Any user logging in for the first time will inherit these settings.
 
-        # Solid‑black background
-        Set-ItemProperty -Path 'HKCU:\Control Panel\Colors' -Name Background -Value '0 0 0'
-        Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name Wallpaper -Value ''
-        Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 0
+        # Path to the default user's registry hive
+        $defaultUserHive = "C:\Users\Default\ntuser.dat"
 
-        # Apply changes
-        rundll32.exe user32.dll,UpdatePerUserSystemParameters 1
+        # Temporary mount point for the hive in the registry
+        $mountPoint = "HKU\TempDefaultUser"
+
+        try {
+          # Load the default user hive into the registry
+          reg load $mountPoint $defaultUserHive
+
+          # --- Set Dark Mode ---
+          $themeKey = "$($mountPoint)\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+          # Create the key if it doesn't exist
+          if (-not (Test-Path "Registry::$themeKey")) {
+            New-Item -Path "Registry::$themeKey" -Force | Out-Null
+          }
+          # Set Apps to use dark theme (0 = Dark, 1 = Light)
+          Set-ItemProperty -Path "Registry::$themeKey" -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
+          # Set System to use dark theme (Taskbar, Start Menu, etc.)
+          Set-ItemProperty -Path "Registry::$themeKey" -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
+
+          # --- Set Black Desktop Background ---
+          # Set the background to a solid color
+          Set-ItemProperty -Path "Registry::$($mountPoint)\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Force
+          # Set the color to black (0 0 0)
+          Set-ItemProperty -Path "Registry::$($mountPoint)\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
+          
+          Write-Host "Successfully configured dark mode and black background for the default user profile."
+        }
+        catch {
+          Write-Error "An error occurred: $_"
+        }
+        finally {
+          # ALWAYS ensure the hive is unloaded, even if errors occur
+          # Flush any registry changes
+          [gc]::Collect()
+          Start-Sleep -Seconds 5
+          # Unload the hive
+          reg unload $mountPoint
+          Write-Host "Default user registry hive has been unloaded."
+        }
       continue-on-error: true
 
     - name: Add 
