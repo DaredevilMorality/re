@@ -24,17 +24,16 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Set dark mode and black desktop for Administrator
+    - name: Dark mode + black desktop (administrator)
       shell: pwsh
       run: |
-        reg.exe load HKU\AdminHive "C:\Users\administrator\NTUSER.DAT"
-        reg.exe add "HKU\AdminHive\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
-        reg.exe add "HKU\AdminHive\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg.exe add "HKU\AdminHive\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg.exe add "HKU\AdminHive\Control Panel\Desktop" /v Wallpaper      /t REG_SZ /d "" /f
-        reg.exe add "HKU\AdminHive\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d 0  /f
-        reg.exe add "HKU\AdminHive\Control Panel\Desktop" /v TileWallpaper  /t REG_SZ /d 0  /f
-        reg.exe unload HKU\AdminHive
+        reg.exe load HKU\Admin "C:\Users\administrator\NTUSER.DAT"
+        reg.exe add "HKU\Admin\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+        reg.exe add "HKU\Admin\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d "0" /f
+        reg.exe add "HKU\Admin\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg.exe add "HKU\Admin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
+        reg.exe add "HKU\Admin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg.exe unload HKU\Admin
       continue-on-error: true
 
     - name: Add 
@@ -137,7 +136,7 @@ jobs:
         pause
         "@
         
-        Set-Content -Path "C:\Users\Public\Desktop\Configure_Cloudflare_WARP.bat" -Value $batchContent
+        Set-Content -Path "C:\Users\Public\Desktop\Cloudflare_WARP.bat" -Value $batchContent
       continue-on-error: true
 
     - name: Add 2
