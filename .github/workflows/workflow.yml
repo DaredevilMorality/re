@@ -24,42 +24,23 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Set Administrator UI Preferences
+    - name: Personalize (black background + dark mode)
       shell: pwsh
       run: |
-        # The administrator user's registry hive is not loaded, so we must load it manually
-        # to apply user-specific settings.
-        $userHive = "C:\Users\administrator\NTUSER.DAT"
-        $regPath = "HKLM\TempAdmin"
+        $admin      = 'administrator'
+        $ntuserPath = "C:\Users\$admin\NTUSER.DAT"
+        reg load HKU\AdminTemp "$ntuserPath" 2>$null
 
-        # Load the user's registry hive
-        reg load $regPath $userHive
+        # solid-black background
+        reg add "HKU\AdminTemp\Control Panel\Desktop" /v WallPaper /t REG_SZ /d " " /f
+        reg add "HKU\AdminTemp\Control Panel\Colors"  /v Background /t REG_SZ /d "0 0 0" /f
 
-        # --- Set Dark Mode ---
-        $themeKeyPath = "$regPath\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-        # Ensure the registry key path exists
-        if (-not (Test-Path $themeKeyPath)) {
-            New-Item -Path $themeKeyPath -Force | Out-Null
-        }
-        # Set 'AppsUseLightTheme' to 0 for dark mode in applications
-        Set-ItemProperty -Path $themeKeyPath -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
-        # Set 'SystemUsesLightTheme' to 0 for dark mode in system elements (taskbar, start menu)
-        Set-ItemProperty -Path $themeKeyPath -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
+        # dark mode (apps + system)
+        reg add "HKU\AdminTemp\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
+        reg add "HKU\AdminTemp\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
 
-        # --- Set Black Desktop Background ---
-        # Set the solid color background to black (RGB 0 0 0)
-        Set-ItemProperty -Path "$regPath\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
-        # Clear any wallpaper image path and set the style to ensure the solid color is shown
-        Set-ItemProperty -Path "$regPath\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Force
-        Set-ItemProperty -Path "$regPath\Control Panel\Desktop" -Name "WallpaperStyle" -Value 2 -Force
-        Set-ItemProperty -Path "$regPath\Control Panel\Desktop" -Name "TileWallpaper" -Value 0 -Force
-        
-        # Force garbage collection to release file handles before unloading
-        [gc]::Collect()
-        [gc]::WaitForPendingFinalizers()
-
-        # Unload the user's registry hive to save the changes
-        reg unload $regPath
+        reg unload HKU\AdminTemp
+        rundll32.exe user32.dll,UpdatePerUserSystemParameters
       continue-on-error: true
 
     - name: Add 
