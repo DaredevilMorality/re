@@ -24,53 +24,42 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Configure Desktop and Theme
+    - name: Set Administrator UI Preferences
       shell: pwsh
       run: |
-        # This script modifies the Default User registry hive.
-        # Any user logging in for the first time will inherit these settings.
+        # The administrator user's registry hive is not loaded, so we must load it manually
+        # to apply user-specific settings.
+        $userHive = "C:\Users\administrator\NTUSER.DAT"
+        $regPath = "HKLM\TempAdmin"
 
-        # Path to the default user's registry hive
-        $defaultUserHive = "C:\Users\Default\ntuser.dat"
+        # Load the user's registry hive
+        reg load $regPath $userHive
 
-        # Temporary mount point for the hive in the registry
-        $mountPoint = "HKU\TempDefaultUser"
-
-        try {
-          # Load the default user hive into the registry
-          reg load $mountPoint $defaultUserHive
-
-          # --- Set Dark Mode ---
-          $themeKey = "$($mountPoint)\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-          # Create the key if it doesn't exist
-          if (-not (Test-Path "Registry::$themeKey")) {
-            New-Item -Path "Registry::$themeKey" -Force | Out-Null
-          }
-          # Set Apps to use dark theme (0 = Dark, 1 = Light)
-          Set-ItemProperty -Path "Registry::$themeKey" -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
-          # Set System to use dark theme (Taskbar, Start Menu, etc.)
-          Set-ItemProperty -Path "Registry::$themeKey" -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
-
-          # --- Set Black Desktop Background ---
-          # Set the background to a solid color
-          Set-ItemProperty -Path "Registry::$($mountPoint)\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Force
-          # Set the color to black (0 0 0)
-          Set-ItemProperty -Path "Registry::$($mountPoint)\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
-          
-          Write-Host "Successfully configured dark mode and black background for the default user profile."
+        # --- Set Dark Mode ---
+        $themeKeyPath = "$regPath\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        # Ensure the registry key path exists
+        if (-not (Test-Path $themeKeyPath)) {
+            New-Item -Path $themeKeyPath -Force | Out-Null
         }
-        catch {
-          Write-Error "An error occurred: $_"
-        }
-        finally {
-          # ALWAYS ensure the hive is unloaded, even if errors occur
-          # Flush any registry changes
-          [gc]::Collect()
-          Start-Sleep -Seconds 5
-          # Unload the hive
-          reg unload $mountPoint
-          Write-Host "Default user registry hive has been unloaded."
-        }
+        # Set 'AppsUseLightTheme' to 0 for dark mode in applications
+        Set-ItemProperty -Path $themeKeyPath -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
+        # Set 'SystemUsesLightTheme' to 0 for dark mode in system elements (taskbar, start menu)
+        Set-ItemProperty -Path $themeKeyPath -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
+
+        # --- Set Black Desktop Background ---
+        # Set the solid color background to black (RGB 0 0 0)
+        Set-ItemProperty -Path "$regPath\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
+        # Clear any wallpaper image path and set the style to ensure the solid color is shown
+        Set-ItemProperty -Path "$regPath\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Force
+        Set-ItemProperty -Path "$regPath\Control Panel\Desktop" -Name "WallpaperStyle" -Value 2 -Force
+        Set-ItemProperty -Path "$regPath\Control Panel\Desktop" -Name "TileWallpaper" -Value 0 -Force
+        
+        # Force garbage collection to release file handles before unloading
+        [gc]::Collect()
+        [gc]::WaitForPendingFinalizers()
+
+        # Unload the user's registry hive to save the changes
+        reg unload $regPath
       continue-on-error: true
 
     - name: Add 
