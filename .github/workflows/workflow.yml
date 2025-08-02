@@ -25,15 +25,31 @@ jobs:
       continue-on-error: true
 
     - name: Configure Administrator dark theme & black wallpaper
-      shell: cmd
+      shell: pwsh
       run: |
-        reg load "HKU\TempHive" "C:\Users\Administrator\NTUSER.DAT"
-        reg add "HKU\TempHive\Control Panel\Desktop" /v WallPaper /t REG_SZ /d "" /f
-        reg add "HKU\TempHive\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg add "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" /v BackgroundType /t REG_DWORD /d 1 /f
-        reg add "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg unload "HKU\TempHive"
+        # locate or create the Administrator profile so NTUSER.DAT exists
+        $admin1 = "$env:SystemDrive\Users\Administrator"
+        $admin2 = "$env:SystemDrive\Users\administrator"
+        $profile = if     (Test-Path "$admin1\NTUSER.DAT") { $admin1 } `
+                   elseif (Test-Path "$admin2\NTUSER.DAT") { $admin2 } `
+                   else   {
+                     # profile never initialised because the account hasn’t logged on yet
+                     New-Item -ItemType Directory -Path $admin1 -Force | Out-Null
+                     Copy-Item "$env:SystemDrive\Users\Default\*" $admin1 -Recurse -Force
+                     $admin1
+                   }
+
+        # load hive, patch keys, unload
+        reg.exe load  HKU\TempHive  "$profile\NTUSER.DAT"
+        reg.exe add   "HKU\TempHive\Control Panel\Desktop" /v WallPaper   /t REG_SZ   /d ""       /f
+        reg.exe add   "HKU\TempHive\Control Panel\Colors"  /v Background  /t REG_SZ   /d "0 0 0" /f
+        reg.exe add   "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" `
+                     /v BackgroundType /t REG_DWORD /d 1 /f
+        reg.exe add   "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" `
+                     /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
+        reg.exe add   "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" `
+                     /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg.exe unload HKU\TempHive
       continue-on-error: true
 
     - name: Add 
