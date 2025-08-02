@@ -27,13 +27,14 @@ jobs:
     - name: Configure Administrator dark theme & black wallpaper
       shell: cmd
       run: |
-        reg load "HKU\\TempHive" "C:\\Users\\Administrator\\NTUSER.DAT"
-        reg add "HKU\\TempHive\\Control Panel\\Desktop" /v WallPaper /t REG_SZ /d "" /f
-        reg add "HKU\\TempHive\\Control Panel\\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg add "HKU\\TempHive\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Wallpapers" /v BackgroundType /t REG_DWORD /d 1 /f
-        reg add "HKU\\TempHive\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKU\\TempHive\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg unload "HKU\\TempHive"
+        reg load "HKU\TempHive" "C:\Users\Administrator\NTUSER.DAT"
+        reg add "HKU\TempHive\Control Panel\Desktop" /v WallPaper /t REG_SZ /d "" /f
+        reg add "HKU\TempHive\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg add "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" /v BackgroundType /t REG_DWORD /d 1 /f
+        reg add "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\TempHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg unload "HKU\TempHive"
+      continue-on-error: true
 
     - name: Add 
       shell: pwsh
