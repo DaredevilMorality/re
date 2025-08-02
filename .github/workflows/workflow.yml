@@ -24,17 +24,16 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Dark mode + black desktop (administrator)
-      shell: pwsh
+    - name: Configure Administrator dark theme & black wallpaper
+      shell: cmd
       run: |
-        reg.exe load HKU\Admin "C:\Users\administrator\NTUSER.DAT"
-        reg.exe add "HKU\Admin\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
-        reg.exe add "HKU\Admin\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d "0" /f
-        reg.exe add "HKU\Admin\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg.exe add "HKU\Admin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
-        reg.exe add "HKU\Admin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg.exe unload HKU\Admin
-      continue-on-error: true
+        reg load "HKU\\TempHive" "C:\\Users\\Administrator\\NTUSER.DAT"
+        reg add "HKU\\TempHive\\Control Panel\\Desktop" /v WallPaper /t REG_SZ /d "" /f
+        reg add "HKU\\TempHive\\Control Panel\\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg add "HKU\\TempHive\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Wallpapers" /v BackgroundType /t REG_DWORD /d 1 /f
+        reg add "HKU\\TempHive\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\\TempHive\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg unload "HKU\\TempHive"
 
     - name: Add 
       shell: pwsh
