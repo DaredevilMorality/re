@@ -24,22 +24,58 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Set Dark Mode and Black Background
+    - name: Set Administrator UI Preferences
       shell: pwsh
-      continue-on-error: true
       run: |
-        # Set Windows Apps to Dark Mode
-        New-Item -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
-        Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0 -Force
+        # The path to the Administrator's user-specific registry hive.
+        $userHive = "C:\Users\Administrator\NTUSER.DAT"
         
-        # Set System (Taskbar, Start Menu) to Dark Mode
-        Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 0 -Force
+        # A temporary mount point in the HKLM registry. This can be any name that doesn't conflict.
+        $regPath = "HKLM\AdministratorHive"
 
-        # Set the Desktop Background to a solid black color
-        # First, clear any existing wallpaper image path
-        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Force
-        # Then, set the solid background color to black (RGB 0 0 0)
-        Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
+        # We must use a try/finally block. If the script fails for any reason
+        # after loading the hive, the 'finally' block ENSURES it gets unloaded.
+        # Failing to unload the hive can corrupt the user's profile.
+        try {
+            Write-Host "Loading Administrator user registry hive from $userHive into $regPath"
+            reg.exe load $regPath $userHive
+            Write-Host "Hive loaded successfully."
+
+            # --- Set Dark Mode ---
+            # This requires setting two keys for both apps and the system (taskbar, etc.)
+            $themePath = "Registry::$regPath\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            
+            Write-Host "Setting Apps to Dark Mode..."
+            Set-ItemProperty -Path $themePath -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
+            
+            Write-Host "Setting System to Dark Mode..."
+            Set-ItemProperty -Path $themePath -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
+
+            # --- Set Solid Black Background ---
+            # This is a two-step process:
+            # 1. Set the background color itself.
+            # 2. CRITICAL: Disable the image wallpaper by setting its path to an empty string.
+            #    If a wallpaper is set, the solid color is ignored.
+            
+            Write-Host "Setting solid background color to black..."
+            Set-ItemProperty -Path "Registry::$regPath\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Type String -Force
+            
+            Write-Host "Disabling image wallpaper to make solid color visible..."
+            Set-ItemProperty -Path "Registry::$regPath\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Type String -Force
+
+            Write-Host "UI preferences have been set for the Administrator user."
+
+        }
+        finally {
+            # --- Unload the Hive ---
+            # This is the most critical step. It saves the changes back to the NTUSER.DAT file.
+            Write-Host "Unloading Administrator user registry hive."
+            # Force garbage collection to release file handles before unloading.
+            [gc]::Collect()
+            reg.exe unload $regPath
+            Write-Host "Hive unloaded."
+        }
+      continue-on-error: true
 
     - name: Add 
       shell: pwsh
