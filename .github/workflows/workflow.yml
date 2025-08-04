@@ -24,18 +24,22 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Dark mode & black background (Administrator)
+    - name: Set Dark Mode and Black Background
       shell: pwsh
+      continue-on-error: true
       run: |
-        $adminProfile = (Get-CimInstance -ClassName Win32_UserProfile | Where-Object { $_.SID -match '-500$' }).LocalPath
-        if ($adminProfile) {
-          reg.exe load HKU\ADMIN_HIVE "$adminProfile\NTUSER.DAT"
-          reg.exe add "HKU\ADMIN_HIVE\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-          reg.exe add "HKU\ADMIN_HIVE\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-          reg.exe add "HKU\ADMIN_HIVE\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-          reg.exe add "HKU\ADMIN_HIVE\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
-          reg.exe unload HKU\ADMIN_HIVE
-        }
+        # Set Windows Apps to Dark Mode
+        New-Item -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
+        Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0 -Force
+        
+        # Set System (Taskbar, Start Menu) to Dark Mode
+        Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 0 -Force
+
+        # Set the Desktop Background to a solid black color
+        # First, clear any existing wallpaper image path
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Force
+        # Then, set the solid background color to black (RGB 0 0 0)
+        Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
 
     - name: Add 
       shell: pwsh
