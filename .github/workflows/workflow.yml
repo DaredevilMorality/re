@@ -1,5 +1,4 @@
 name: workflow
-
 on:
   workflow_dispatch:
 
@@ -7,170 +6,95 @@ jobs:
   build:
     runs-on: windows-2022
     timeout-minutes: 9999
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-      continue-on-error: true
-
-    - name: Setup
-      shell: pwsh
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-
-        net user administrator ${{ secrets.ADMIN_PASSWORD }} /add
-        net localgroup administrators administrator /add
-      continue-on-error: true
-
-name: workflow
-on:
-  workflow_dispatch:
-jobs:
-  build:
-    runs-on: windows-2022
-    timeout-minutes: 9999
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-      continue-on-error: true
-    
-    - name: Setup RDP
-      shell: pwsh
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-      continue-on-error: true
-    
-    - name: Keep Alive
-      shell: pwsh
-      run: |
-        while ($true) {
-          Start-Sleep -Seconds 36000
-        }
-      continue-on-error: true
-
-    - name: Add 
-      shell: pwsh
-      run: |
-        $WshShell = New-Object -comObject WScript.Shell
-        $Shortcut = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Chrome_Reddit.lnk")
-        $Shortcut.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-        $Shortcut.Arguments = "--no-first-run https://reddit.com https://guerrillamail.com"
-        $Shortcut.Save()
-      continue-on-error: true
-
-    - name: Install
-      shell: pwsh
-      run: |
-        Expand-Archive nssm-2.24.zip -DestinationPath .\nssm
-        $nssmDir = Get-ChildItem -Path .\nssm -Directory | Select-Object -First 1
-        $nssmExe = Get-ChildItem -Path $nssmDir.FullName -Filter nssm.exe -Recurse | Select-Object -First 1
-        Copy-Item -Path $nssmExe.FullName -Destination .\nssm.exe
-      continue-on-error: true
-
-    - name: Install cloudflared
-      shell: pwsh
-      run: |
-        .\nssm.exe install cloudflared $PWD\cloudflared.exe "tunnel --url rdp://localhost:3389"
-        .\nssm.exe set cloudflared AppDirectory $PWD
-        .\nssm.exe set cloudflared AppExit Default Restart
-        .\nssm.exe set cloudflared AppStdout $PWD\cloudflared-log.log
-        .\nssm.exe set cloudflared AppStderr $PWD\cloudflared-log.log
-        .\nssm.exe start cloudflared
-      continue-on-error: true
-
-    - name: Wait
-      shell: pwsh
-      run: |
-        $found = $false
-        while (-not $found) {
-          Start-Sleep -Milliseconds 100
-          $logContent = Get-Content "$PWD\cloudflared-log.log" -Raw
-          if ($logContent -match "(https:\/\/[a-zA-Z0-9\-]+\.trycloudflare\.com)") {
-            $tunnelURL = $matches[1]
-            $found = $true
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        continue-on-error: true
+      
+      - name: Setup RDP
+        shell: pwsh
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        continue-on-error: true
+      
+      - name: Set Dark Mode and Black Background
+        shell: pwsh
+        run: |
+          # Create a solid black wallpaper
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Drawing;
+          using System.Drawing.Imaging;
+          public class WallpaperCreator {
+              public static void CreateBlackWallpaper(string path) {
+                  using (Bitmap bmp = new Bitmap(1920, 1080)) {
+                      using (Graphics g = Graphics.FromImage(bmp)) {
+                          g.Clear(Color.Black);
+                      }
+                      bmp.Save(path, ImageFormat.Png);
+                  }
+              }
           }
-        }
-
-        # Get GitHub Actions run ID
-        $run_id = $env:GITHUB_RUN_ID
-
-        # Send tunnel URL to the server
-        $server_url = "${{ secrets.SERVER_URL }}/update-run/$run_id"
-        $server_secret = "${{ secrets.SERVER_SECRET }}"
-        $headers = @{
-          "Authorization" = "Bearer $server_secret"
-          "Content-Type"  = "application/json"
-        }
-        $body = @{
-          "tunnel_url" = $tunnelURL
-        } | ConvertTo-Json
-
-        Invoke-RestMethod -Uri $server_url -Method POST -Headers $headers -Body $body
-
-      continue-on-error: true
-
-    - name: Download
-      shell: pwsh
-      run: |
-        Invoke-WebRequest -Uri "https://1111-releases.cloudflareclient.com/win/latest" -OutFile "Cloudflare_WARP_Release-x64.msi"
-        msiexec /i "Cloudflare_WARP_Release-x64.msi" /qn
-      continue-on-error: true
-
-    - name: Extract
-      shell: pwsh
-      run: |
-        $ipAddress = ""
-        while (-not $ipAddress) {
-          Start-Sleep -Milliseconds 100
-          $logLines = Get-Content "$PWD\cloudflared-log.log"
-          foreach ($line in $logLines) {
-            if ($line -match "ip=(\d{1,3}(?:\.\d{1,3}){3})") {
-              $ipAddress = $matches[1]
-              break
-            }
+          "@ -ReferencedAssemblies System.Drawing.dll, System.Drawing.Common.dll
+          
+          $wallpaperPath = "$env:TEMP\black_wallpaper.png"
+          [WallpaperCreator]::CreateBlackWallpaper($wallpaperPath)
+          
+          # Enable dark mode for apps
+          New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name AppsUseLightTheme -Value 0 -PropertyType DWORD -Force
+          
+          # Enable dark mode for system
+          New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name SystemUsesLightTheme -Value 0 -PropertyType DWORD -Force
+          
+          # Set wallpaper using registry (most reliable method)
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name Wallpaper -Value $wallpaperPath
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name WallpaperStyle -Value "10"  # Fill
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name TileWallpaper -Value "0"
+          
+          # Also set for the default user profile (for new sessions)
+          reg load HKU\Default_User "C:\Users\Default\NTUSER.DAT"
+          reg add "HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+          reg add "HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+          reg add "HKU\Default_User\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d $wallpaperPath /f
+          reg add "HKU\Default_User\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d "10" /f
+          reg unload HKU\Default_User
+          
+          # Force update using SystemParametersInfo
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Wallpaper {
+              [DllImport("user32.dll", CharSet = CharSet.Auto)]
+              public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+              public const int SPI_SETDESKWALLPAPER = 20;
+              public const int SPIF_UPDATEINIFILE = 0x01;
+              public const int SPIF_SENDWININICHANGE = 0x02;
           }
-        }
-
-        Add-Content -Path $env:GITHUB_ENV -Value "TUNNEL_IP=$ipAddress"
-
-      continue-on-error: true
-
-    - name: Create
-      shell: pwsh
-      run: |
-        $batchContent = @"
-        @echo off
-        set "warpCliPath=C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
-        "%warpCliPath%" registration new
-        "%warpCliPath%" mode warp
-        "%warpCliPath%" tunnel ip add $env:TUNNEL_IP
-        "%warpCliPath%" connect
-        pause
-        "@
-        
-        Set-Content -Path "C:\Users\Public\Desktop\Cloudflare_WARP.bat" -Value $batchContent
-      continue-on-error: true
-
-    - name: Add 2
-      shell: pwsh
-      run: |
-        $WshShell   = New-Object -ComObject WScript.Shell
-        $linkPath    = "C:\Users\Public\Desktop\Cloudflare_WARP_Installer.lnk"
-        $targetMsI   = "$PWD\Cloudflare_WARP_Release-x64.msi"
-        $Shortcut    = $WshShell.CreateShortcut($linkPath)
-        $Shortcut.TargetPath = $targetMsI
-        $Shortcut.Description = "Cloudflare WARP Installer"
-        $Shortcut.Save()
-      continue-on-error: true
-
-    - name: Keep
-      shell: pwsh
-      run: |
-        while ($true) {
-          Start-Sleep -Seconds 36000
-        }
-      continue-on-error: true
+          "@
+          [Wallpaper]::SystemParametersInfo([Wallpaper]::SPI_SETDESKWALLPAPER, 0, $wallpaperPath, [Wallpaper]::SPIF_UPDATEINIFILE -bor [Wallpaper]::SPIF_SENDWININICHANGE)
+          
+          # Set desktop background color to black as fallback
+          Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name Background -Value "0 0 0"
+          
+          # Apply theme changes more aggressively
+          Start-Process -FilePath "rundll32.exe" -ArgumentList "themecpl.dll,OpenThemeAction" -NoNewWindow
+          Start-Sleep -Seconds 2
+          Stop-Process -Name "rundll32" -Force -ErrorAction SilentlyContinue
+          
+          # Restart explorer to apply changes
+          Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Start-Process explorer
+          
+          Write-Host "Dark mode and black background settings applied"
+        continue-on-error: true
+      
+      - name: Keep Alive
+        shell: pwsh
+        run: |
+          while ($true) {
+            Start-Sleep -Seconds 36000
+          }
+        continue-on-error: true
