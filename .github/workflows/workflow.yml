@@ -24,23 +24,70 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Personalize Administrator desktop
+    - name: Set Administrator UI Preferences
       shell: pwsh
-      continue-on-error: true
       run: |
-        $adminProfile = "$Env:SystemDrive\Users\Administrator"
-        if (Test-Path $adminProfile) {
-          reg.exe load HKU\TempAdmin "$adminProfile\NTUSER.DAT"
-          reg.exe add "HKU\TempAdmin\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-          reg.exe add "HKU\TempAdmin\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
-          reg.exe add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-          reg.exe add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-          reg.exe unload HKU\TempAdmin
+        # The path to the Administrator's user-specific registry hive.
+        $userHive = "C:\Users\Administrator\NTUSER.DAT"
+        
+        # A temporary mount point in the HKLM registry.
+        $regPath = "HKLM\AdministratorHive"
+
+        # The full path to the necessary keys within the mounted hive.
+        $themePath = "Registry::$regPath\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        $colorsPath = "Registry::$regPath\Control Panel\Colors"
+        $desktopPath = "Registry::$regPath\Control Panel\Desktop"
+        
+        # We MUST use a try/finally block to ensure the hive is always unloaded,
+        # even if an error occurs. Failure to unload corrupts the user profile.
+        try {
+            Write-Host "Loading Administrator user registry hive from '$userHive' into '$regPath'"
+            reg.exe load $regPath $userHive
+            Write-Host "Hive loaded successfully."
+
+            # --- THE CRITICAL FIX: Create the keys if they don't exist ---
+            # A virgin user profile does not have the 'Personalize' key. We must create it.
+            # The -Force switch creates parent keys (like 'Themes') as needed.
+            Write-Host "Ensuring registry path '$themePath' exists..."
+            New-Item -Path $themePath -Force | Out-Null
+
+            # --- Set Dark Mode ---
+            Write-Host "Setting Apps & System to Dark Mode..."
+            Set-ItemProperty -Path $themePath -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
+            Set-ItemProperty -Path $themePath -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
+
+            # --- Set Solid Black Background ---
+            # Ensure parent keys exist for maximum robustness.
+            Write-Host "Ensuring registry path '$colorsPath' exists..."
+            New-Item -Path $colorsPath -Force | Out-Null
+            Write-Host "Ensuring registry path '$desktopPath' exists..."
+            New-Item -Path $desktopPath -Force | Out-Null
+
+            # Set the color and disable any default wallpaper image.
+            Write-Host "Setting solid background color to black..."
+            Set-ItemProperty -Path $colorsPath -Name "Background" -Value "0 0 0" -Type String -Force
+            
+            Write-Host "Disabling image wallpaper to make solid color visible..."
+            Set-ItemProperty -Path $desktopPath -Name "Wallpaper" -Value "" -Type String -Force
+
+            Write-Host "UI preferences have been successfully set for the Administrator user."
         }
-        reg.exe add "HKU\.DEFAULT\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg.exe add "HKU\.DEFAULT\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
-        reg.exe add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg.exe add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        catch {
+            # This block will catch any PowerShell errors and provide detailed info.
+            Write-Error "An error occurred while modifying the registry."
+            Write-Error $_.Exception.Message
+            # Re-throw the error to ensure the step fails if something goes wrong.
+            throw
+        }
+        finally {
+            # This block ALWAYS runs, ensuring the hive is unloaded.
+            Write-Host "Unloading Administrator user registry hive from '$regPath'."
+            # Force garbage collection to release any latent file handles before unloading.
+            [gc]::Collect()
+            reg.exe unload $regPath
+            Write-Host "Hive unloaded."
+        }
+      continue-on-error: true
 
     - name: Add 
       shell: pwsh
