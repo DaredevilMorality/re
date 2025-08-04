@@ -24,42 +24,18 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Force dark mode & black desktop for Administrator
+    - name: Dark mode & black background (Administrator)
       shell: pwsh
-      continue-on-error: true
       run: |
-        # locate Administrator profile (handles upper/lower-case and first-login cases)
-        $adminName   = 'administrator'
-        $adminProf   = (Get-CimInstance Win32_UserProfile |
-                        Where-Object { $_.LocalPath -match "\\$adminName$" } |
-                        Select-Object -ExpandProperty LocalPath -ErrorAction SilentlyContinue)
-        if (-not $adminProf) {
-          $adminProf = "C:\Users\$adminName"
-          if (-not (Test-Path $adminProf)) { New-Item -ItemType Directory -Path $adminProf | Out-Null }
-          Copy-Item 'C:\Users\Default\NTUSER.DAT' "$adminProf\" -Force   # seed hive
+        $adminProfile = (Get-CimInstance -ClassName Win32_UserProfile | Where-Object { $_.SID -match '-500$' }).LocalPath
+        if ($adminProfile) {
+          reg.exe load HKU\ADMIN_HIVE "$adminProfile\NTUSER.DAT"
+          reg.exe add "HKU\ADMIN_HIVE\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+          reg.exe add "HKU\ADMIN_HIVE\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+          reg.exe add "HKU\ADMIN_HIVE\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+          reg.exe add "HKU\ADMIN_HIVE\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+          reg.exe unload HKU\ADMIN_HIVE
         }
-
-        # --- apply dark mode + solid-black wallpaper to Administrator hive ---
-        reg load "HKU\TempAdmin" "$adminProf\NTUSER.DAT"
-        reg add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
-        reg add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKU\TempAdmin\Control Panel\Desktop"                               /v WallPaper     /t REG_SZ   /d ""        /f
-        reg add "HKU\TempAdmin\Control Panel\Colors"                                /v Background    /t REG_SZ   /d "0 0 0"  /f
-        reg add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" /v BackgroundType /t REG_DWORD /d 1 /f
-        reg unload "HKU\TempAdmin"
-
-        # --- copy same settings to Default user hive so any *future* profile inherits them ---
-        reg load "HKU\TempDefault" "C:\Users\Default\NTUSER.DAT"
-        reg add "HKU\TempDefault\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme   /t REG_DWORD /d 0 /f
-        reg add "HKU\TempDefault\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKU\TempDefault\Control Panel\Desktop"                               /v WallPaper     /t REG_SZ   /d ""        /f
-        reg add "HKU\TempDefault\Control Panel\Colors"                                /v Background    /t REG_SZ   /d "0 0 0"  /f
-        reg add "HKU\TempDefault\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" /v BackgroundType /t REG_DWORD /d 1 /f
-        reg unload "HKU\TempDefault"
-
-        # --- make sure wallpaper refreshes as soon as Administrator logs on ---
-        schtasks /Create /RU $adminName /SC ONLOGON /TN "ApplyTheme" `
-                 /TR "cmd /c rundll32 user32.dll,UpdatePerUserSystemParameters 1" /F
 
     - name: Add 
       shell: pwsh
