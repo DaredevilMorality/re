@@ -27,65 +27,81 @@ jobs:
     - name: Set Administrator UI Preferences
       shell: pwsh
       run: |
-        # The path to the Administrator's user-specific registry hive.
-        $userHive = "C:\Users\Administrator\NTUSER.DAT"
+        # --- Define Paths ---
+        $adminProfileDir = "C:\Users\Administrator"
+        $userHivePath = Join-Path $adminProfileDir "NTUSER.DAT"
+        $defaultUserHivePath = "C:\Users\Default\NTUSER.DAT"
+        $regMountPath = "HKLM\AdministratorHive"
         
-        # A temporary mount point in the HKLM registry.
-        $regPath = "HKLM\AdministratorHive"
-
-        # The full path to the necessary keys within the mounted hive.
-        $themePath = "Registry::$regPath\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-        $colorsPath = "Registry::$regPath\Control Panel\Colors"
-        $desktopPath = "Registry::$regPath\Control Panel\Desktop"
+        # --- THE GRANDMA-SAVING FIX: SEED THE USER PROFILE ---
+        # A user's NTUSER.DAT hive does not exist until first login. We must create it
+        # by copying the template from the 'Default' user profile.
+        if (-not (Test-Path $userHivePath)) {
+            Write-Host "Administrator profile hive not found at '$userHivePath'."
+            Write-Host "Seeding profile from default user template at '$defaultUserHivePath'."
+            
+            # Ensure the parent directory exists before copying.
+            New-Item -Path $adminProfileDir -ItemType Directory -Force | Out-Null
+            Copy-Item -Path $defaultUserHivePath -Destination $userHivePath -Force
+            
+            Write-Host "Administrator profile hive has been created successfully."
+        } else {
+            Write-Host "Administrator profile hive already exists."
+        }
         
-        # We MUST use a try/finally block to ensure the hive is always unloaded,
-        # even if an error occurs. Failure to unload corrupts the user profile.
+        # We MUST use a try/finally block to ensure the hive is always unloaded.
         try {
-            Write-Host "Loading Administrator user registry hive from '$userHive' into '$regPath'"
-            reg.exe load $regPath $userHive
+            Write-Host "Loading Administrator user registry hive from '$userHivePath' into '$regMountPath'"
+            reg.exe load $regMountPath $userHivePath
+            
+            # --- CRITICAL ERROR CHECK ---
+            # Verify reg.exe succeeded before proceeding.
+            if ($LASTEXITCODE -ne 0) {
+                throw "FATAL: 'reg.exe load' failed with exit code $LASTEXITCODE. Cannot modify registry."
+            }
             Write-Host "Hive loaded successfully."
 
-            # --- THE CRITICAL FIX: Create the keys if they don't exist ---
-            # A virgin user profile does not have the 'Personalize' key. We must create it.
-            # The -Force switch creates parent keys (like 'Themes') as needed.
-            Write-Host "Ensuring registry path '$themePath' exists..."
+            # Define target registry paths *inside* the mounted hive
+            $themePath = "Registry::$regMountPath\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            $colorsPath = "Registry::$regMountPath\Control Panel\Colors"
+            $desktopPath = "Registry::$regMountPath\Control Panel\Desktop"
+            
+            # --- Create Keys if they don't exist ---
+            Write-Host "Ensuring required registry key paths exist..."
             New-Item -Path $themePath -Force | Out-Null
-
+            
             # --- Set Dark Mode ---
             Write-Host "Setting Apps & System to Dark Mode..."
             Set-ItemProperty -Path $themePath -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
             Set-ItemProperty -Path $themePath -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
-
-            # --- Set Solid Black Background ---
-            # Ensure parent keys exist for maximum robustness.
-            Write-Host "Ensuring registry path '$colorsPath' exists..."
-            New-Item -Path $colorsPath -Force | Out-Null
-            Write-Host "Ensuring registry path '$desktopPath' exists..."
-            New-Item -Path $desktopPath -Force | Out-Null
-
-            # Set the color and disable any default wallpaper image.
-            Write-Host "Setting solid background color to black..."
-            Set-ItemProperty -Path $colorsPath -Name "Background" -Value "0 0 0" -Type String -Force
             
-            Write-Host "Disabling image wallpaper to make solid color visible..."
+            # --- Set Solid Black Background ---
+            Write-Host "Setting solid background color to black and disabling wallpaper..."
+            Set-ItemProperty -Path $colorsPath -Name "Background" -Value "0 0 0" -Type String -Force
             Set-ItemProperty -Path $desktopPath -Name "Wallpaper" -Value "" -Type String -Force
-
+            
             Write-Host "UI preferences have been successfully set for the Administrator user."
         }
         catch {
-            # This block will catch any PowerShell errors and provide detailed info.
-            Write-Error "An error occurred while modifying the registry."
+            # Catch any PowerShell errors and provide detailed info.
+            Write-Error "A fatal error occurred while modifying the registry."
             Write-Error $_.Exception.Message
-            # Re-throw the error to ensure the step fails if something goes wrong.
-            throw
+            throw # Re-throw the error to ensure the GitHub Actions step fails.
         }
         finally {
-            # This block ALWAYS runs, ensuring the hive is unloaded.
-            Write-Host "Unloading Administrator user registry hive from '$regPath'."
-            # Force garbage collection to release any latent file handles before unloading.
+            # This block ALWAYS runs.
+            Write-Host "Unloading Administrator user registry hive from '$regMountPath'."
+            
+            # Force garbage collection to release any latent file handles.
             [gc]::Collect()
-            reg.exe unload $regPath
-            Write-Host "Hive unloaded."
+            
+            reg.exe unload $regMountPath
+            # Check for unload errors, but don't throw, as the main error is more important.
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "'reg.exe unload' failed with exit code $LASTEXITCODE. The hive might still be loaded."
+            } else {
+                Write-Host "Hive unloaded successfully."
+            }
         }
       continue-on-error: true
 
