@@ -24,84 +24,103 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Set Administrator UI Preferences
+name: workflow
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 9999
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      continue-on-error: true
+    
+    - name: Setup RDP
       shell: pwsh
       run: |
-        # --- Define Paths ---
-        $adminProfileDir = "C:\Users\Administrator"
-        $userHivePath = Join-Path $adminProfileDir "NTUSER.DAT"
-        $defaultUserHivePath = "C:\Users\Default\NTUSER.DAT"
-        $regMountPath = "HKLM\AdministratorHive"
-        
-        # --- THE GRANDMA-SAVING FIX: SEED THE USER PROFILE ---
-        # A user's NTUSER.DAT hive does not exist until first login. We must create it
-        # by copying the template from the 'Default' user profile.
-        if (-not (Test-Path $userHivePath)) {
-            Write-Host "Administrator profile hive not found at '$userHivePath'."
-            Write-Host "Seeding profile from default user template at '$defaultUserHivePath'."
-            
-            # Ensure the parent directory exists before copying.
-            New-Item -Path $adminProfileDir -ItemType Directory -Force | Out-Null
-            Copy-Item -Path $defaultUserHivePath -Destination $userHivePath -Force
-            
-            Write-Host "Administrator profile hive has been created successfully."
-        } else {
-            Write-Host "Administrator profile hive already exists."
-        }
-        
-        # We MUST use a try/finally block to ensure the hive is always unloaded.
-        try {
-            Write-Host "Loading Administrator user registry hive from '$userHivePath' into '$regMountPath'"
-            reg.exe load $regMountPath $userHivePath
-            
-            # --- CRITICAL ERROR CHECK ---
-            # Verify reg.exe succeeded before proceeding.
-            if ($LASTEXITCODE -ne 0) {
-                throw "FATAL: 'reg.exe load' failed with exit code $LASTEXITCODE. Cannot modify registry."
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+      continue-on-error: true
+    
+    - name: Set Dark Mode and Black Background
+      shell: pwsh
+      run: |
+        # Create a solid black wallpaper
+        Add-Type -TypeDefinition @"
+        using System;
+        using System.Drawing;
+        using System.Drawing.Imaging;
+        public class WallpaperCreator {
+            public static void CreateBlackWallpaper(string path) {
+                using (Bitmap bmp = new Bitmap(1920, 1080)) {
+                    using (Graphics g = Graphics.FromImage(bmp)) {
+                        g.Clear(Color.Black);
+                    }
+                    bmp.Save(path, ImageFormat.Png);
+                }
             }
-            Write-Host "Hive loaded successfully."
-
-            # Define target registry paths *inside* the mounted hive
-            $themePath = "Registry::$regMountPath\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-            $colorsPath = "Registry::$regMountPath\Control Panel\Colors"
-            $desktopPath = "Registry::$regMountPath\Control Panel\Desktop"
-            
-            # --- Create Keys if they don't exist ---
-            Write-Host "Ensuring required registry key paths exist..."
-            New-Item -Path $themePath -Force | Out-Null
-            
-            # --- Set Dark Mode ---
-            Write-Host "Setting Apps & System to Dark Mode..."
-            Set-ItemProperty -Path $themePath -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force
-            Set-ItemProperty -Path $themePath -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
-            
-            # --- Set Solid Black Background ---
-            Write-Host "Setting solid background color to black and disabling wallpaper..."
-            Set-ItemProperty -Path $colorsPath -Name "Background" -Value "0 0 0" -Type String -Force
-            Set-ItemProperty -Path $desktopPath -Name "Wallpaper" -Value "" -Type String -Force
-            
-            Write-Host "UI preferences have been successfully set for the Administrator user."
         }
-        catch {
-            # Catch any PowerShell errors and provide detailed info.
-            Write-Error "A fatal error occurred while modifying the registry."
-            Write-Error $_.Exception.Message
-            throw # Re-throw the error to ensure the GitHub Actions step fails.
+"@ -ReferencedAssemblies System.Drawing.dll, System.Drawing.Common.dll
+        
+        $wallpaperPath = "$env:TEMP\black_wallpaper.png"
+        [WallpaperCreator]::CreateBlackWallpaper($wallpaperPath)
+        
+        # Enable dark mode for apps
+        New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name AppsUseLightTheme -Value 0 -PropertyType DWORD -Force
+        
+        # Enable dark mode for system
+        New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name SystemUsesLightTheme -Value 0 -PropertyType DWORD -Force
+        
+        # Set wallpaper using registry (most reliable method)
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name Wallpaper -Value $wallpaperPath
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name WallpaperStyle -Value "10"  # Fill
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name TileWallpaper -Value "0"
+        
+        # Also set for the default user profile (for new sessions)
+        reg load HKU\Default_User "C:\Users\Default\NTUSER.DAT"
+        reg add "HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\Default_User\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d $wallpaperPath /f
+        reg add "HKU\Default_User\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d "10" /f
+        reg unload HKU\Default_User
+        
+        # Force update using SystemParametersInfo
+        Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class Wallpaper {
+            [DllImport("user32.dll", CharSet = CharSet.Auto)]
+            public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+            public const int SPI_SETDESKWALLPAPER = 20;
+            public const int SPIF_UPDATEINIFILE = 0x01;
+            public const int SPIF_SENDWININICHANGE = 0x02;
         }
-        finally {
-            # This block ALWAYS runs.
-            Write-Host "Unloading Administrator user registry hive from '$regMountPath'."
-            
-            # Force garbage collection to release any latent file handles.
-            [gc]::Collect()
-            
-            reg.exe unload $regMountPath
-            # Check for unload errors, but don't throw, as the main error is more important.
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "'reg.exe unload' failed with exit code $LASTEXITCODE. The hive might still be loaded."
-            } else {
-                Write-Host "Hive unloaded successfully."
-            }
+"@
+        [Wallpaper]::SystemParametersInfo([Wallpaper]::SPI_SETDESKWALLPAPER, 0, $wallpaperPath, [Wallpaper]::SPIF_UPDATEINIFILE -bor [Wallpaper]::SPIF_SENDWININICHANGE)
+        
+        # Set desktop background color to black as fallback
+        Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name Background -Value "0 0 0"
+        
+        # Apply theme changes more aggressively
+        Start-Process -FilePath "rundll32.exe" -ArgumentList "themecpl.dll,OpenThemeAction" -NoNewWindow
+        Start-Sleep -Seconds 2
+        Stop-Process -Name "rundll32" -Force -ErrorAction SilentlyContinue
+        
+        # Restart explorer to apply changes
+        Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        Start-Process explorer
+        
+        Write-Host "Dark mode and black background settings applied"
+      continue-on-error: true
+    
+    - name: Keep Alive
+      shell: pwsh
+      run: |
+        while ($true) {
+          Start-Sleep -Seconds 36000
         }
       continue-on-error: true
 
