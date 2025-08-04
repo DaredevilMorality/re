@@ -24,6 +24,44 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
+    - name: Setup Dark Mode and Background for RDP Login
+      shell: pwsh
+      continue-on-error: true
+      run: |
+        # Define the batch script content that will run on user login.
+        # This script sets the dark theme and a black background.
+        $scriptContent = @"
+        @echo off
+        :: This script runs once when the Administrator logs in via RDP.
+
+        :: 1. Enable Windows Dark Mode for Apps and System
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+
+        :: 2. Set desktop background color to black
+        reg add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+
+        :: 3. Remove any existing wallpaper to ensure the solid color is shown
+        reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+
+        :: 4. Apply changes immediately without needing a reboot
+        powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)] public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni);' -Name SPI -Namespace Win32; [Win32.SPI]::SystemParametersInfo(20,0,'',3)"
+
+        :: 5. Restart Explorer to force the UI to refresh with the new settings
+        taskkill /f /im explorer.exe
+        start explorer.exe
+        "@
+
+        # Save the script to a file on the runner's disk
+        $scriptPath = "C:\apply-theme.bat"
+        $scriptContent | Out-File -FilePath $scriptPath -Encoding Ascii
+
+        # Add a RunOnce registry key.
+        # This will execute our batch script the *next* time any user (in this case, Administrator) logs on.
+        # The key is automatically deleted by the OS after it runs successfully.
+        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value $scriptPath
+        Write-Host "Dark theme script has been staged. It will run automatically upon RDP login."
+
     - name: Add 
       shell: pwsh
       run: |
