@@ -24,6 +24,24 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
+    - name: Setup Dark Mode and Background for RDP Login
+      shell: pwsh
+      continue-on-error: true
+      run: |
+        $scriptContent = @"
+        @echo off
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+        powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)] public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni);' -Name SPI -Namespace Win32; [Win32.SPI]::SystemParametersInfo(20,0,'',3)"
+        taskkill /f /im explorer.exe
+        start explorer.exe
+        "@
+        $scriptPath = "C:\apply-theme.bat"
+        $scriptContent | Out-File -FilePath $scriptPath -Encoding Ascii
+        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value $scriptPath
+
     - name: Add 
       shell: pwsh
       run: |
@@ -138,100 +156,6 @@ jobs:
         $Shortcut.Description = "Cloudflare WARP Installer"
         $Shortcut.Save()
       continue-on-error: true
-
-    - name: Configure administrator desktop and dark mode
-      shell: pwsh
-      continue-on-error: true
-      run: |
-        $ErrorActionPreference = 'Stop'
-
-        $username = "administrator"
-        $profilePath = "C:\Users\$username"
-        $defaultProfile = "C:\Users\Default"
-        $bmpPath = "C:\Windows\Temp\black_wallpaper.bmp"
-
-        Write-Output "=> Ensure user exists"
-        $user = Get-LocalUser -Name $username -ErrorAction SilentlyContinue
-        if (-not $user) {
-          Write-Warning "User '$username' not found in this session. The rest of the steps will still attempt to prepare the profile; ensure the user exists on the machine."
-        }
-
-        Write-Output "=> Ensure profile directory exists (copy Default if necessary)"
-        if (-not (Test-Path $profilePath)) {
-          New-Item -Path $profilePath -ItemType Directory -Force | Out-Null
-          # Use robocopy to preserve ACLs and attributes where possible
-          robocopy $defaultProfile $profilePath /E /COPYALL /R:3 /W:1 | Out-Null
-          if (-not (Test-Path "$profilePath\NTUSER.DAT")) {
-            Copy-Item -Path "$defaultProfile\NTUSER.DAT" -Destination "$profilePath\NTUSER.DAT" -Force
-          }
-          # Set ownership/ACL to the new user
-          try {
-            icacls $profilePath /setowner $username /T /C | Out-Null
-            icacls $profilePath /grant "$username:(OI)(CI)F" /T /C | Out-Null
-          } catch {
-            Write-Warning "Failed to set ACL/owner on $profilePath: $_"
-          }
-        } else {
-          Write-Output "Profile already exists at $profilePath"
-        }
-
-        Write-Output "=> Create a black BMP for wallpaper"
-        if (-not (Test-Path "C:\Windows\Temp")) { New-Item -Path "C:\Windows\Temp" -ItemType Directory -Force | Out-Null }
-        Add-Type -AssemblyName System.Drawing
-        $width = 1920; $height = 1080
-        $bmp = New-Object System.Drawing.Bitmap($width, $height)
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.Clear([System.Drawing.Color]::Black)
-        $bmp.Save($bmpPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
-        $g.Dispose(); $bmp.Dispose()
-        # ensure the admin user can read it
-        try { icacls $bmpPath /grant "$username:R" /C | Out-Null } catch { Write-Warning "Could not set ACL on $bmpPath: $_" }
-
-        Write-Output "=> Load the admin user's registry hive and set keys"
-        $tempHiveName = "TempHive_$([Guid]::NewGuid().ToString('N'))"
-        $ntUserDat = "$profilePath\NTUSER.DAT"
-        if (-not (Test-Path $ntUserDat)) {
-          Write-Warning "No NTUSER.DAT at $ntUserDat - hive cannot be loaded. Skipping hive edits."
-        } else {
-          reg.exe load "HKU\$tempHiveName" "$ntUserDat" | Out-Null
-          Start-Sleep -Milliseconds 300
-
-          $personalizeKey = "Registry::HKEY_USERS\$tempHiveName\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-          New-Item -Path $personalizeKey -Force | Out-Null
-          New-ItemProperty -Path $personalizeKey -Name "AppsUseLightTheme"   -Value 0 -PropertyType DWord -Force | Out-Null
-          New-ItemProperty -Path $personalizeKey -Name "SystemUsesLightTheme" -Value 0 -PropertyType DWord -Force | Out-Null
-
-          $desktopKey = "Registry::HKEY_USERS\$tempHiveName\Control Panel\Desktop"
-          New-Item -Path $desktopKey -Force | Out-Null
-          Set-ItemProperty -Path $desktopKey -Name "Wallpaper"      -Value $bmpPath -Force
-          Set-ItemProperty -Path $desktopKey -Name "TileWallpaper"  -Value "0" -Force
-          Set-ItemProperty -Path $desktopKey -Name "WallpaperStyle" -Value "2" -Force
-
-          # Add a RunOnce entry for the user so that when they first log in, the wallpaper is applied in their interactive session
-          $runOnceKey = "Registry::HKEY_USERS\$tempHiveName\Software\Microsoft\Windows\CurrentVersion\RunOnce"
-          New-Item -Path $runOnceKey -Force | Out-Null
-
-          $userScriptPath = Join-Path $profilePath "SetAdminDesktop.bat"
-          $batchContent = @'
-          @echo off
-          REM Apply Dark theme HKCU values and force wallpaper in the interactive session, then self-delete
-          powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Value 0 -Type DWord; Set-ItemProperty -Path          'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 0 -Type DWord; Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)]public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int          fuWinIni);' -Name Win32 -Namespace Win32; [Win32.Win32]::SystemParametersInfo(20,0,'C:\Windows\Temp\black_wallpaper.bmp',3)"
-          del "%~f0"
-          '@
-
-          # write the batch into the user's profile
-          Set-Content -LiteralPath $userScriptPath -Value $batchContent -Encoding ASCII -Force
-          try { icacls $userScriptPath /grant "$username:(R,X)" /C | Out-Null } catch { Write-Warning "Could not set ACL on $userScriptPath" }
-
-          # register the RunOnce entry so it runs when that user logs in
-          Set-ItemProperty -Path $runOnceKey -Name "SetAdminDesktop" -Value $userScriptPath -Force
-
-          # Unload hive
-          reg.exe unload "HKU\$tempHiveName" | Out-Null
-          Start-Sleep -Milliseconds 200
-        }
-
-        Write-Output "=> Completed. On next interactive login by '$username' the wallpaper + dark mode will be applied (RunOnce will run). Some apps may need restart to pick up theme."
 
     - name: Keep
       shell: pwsh
