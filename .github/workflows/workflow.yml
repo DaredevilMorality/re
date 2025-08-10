@@ -213,11 +213,11 @@ jobs:
 
           $userScriptPath = Join-Path $profilePath "SetAdminDesktop.bat"
           $batchContent = @'
-@echo off
-REM Apply Dark theme HKCU values and force wallpaper in the interactive session, then self-delete
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Value 0 -Type DWord; Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 0 -Type DWord; Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)]public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni);' -Name Win32 -Namespace Win32; [Win32.Win32]::SystemParametersInfo(20,0,'C:\Windows\Temp\black_wallpaper.bmp',3)"
-del "%~f0"
-'@
+          @echo off
+          REM Apply Dark theme HKCU values and force wallpaper in the interactive session, then self-delete
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Value 0 -Type DWord; Set-ItemProperty -Path          'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 0 -Type DWord; Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)]public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int          fuWinIni);' -Name Win32 -Namespace Win32; [Win32.Win32]::SystemParametersInfo(20,0,'C:\Windows\Temp\black_wallpaper.bmp',3)"
+          del "%~f0"
+          '@
 
           # write the batch into the user's profile
           Set-Content -LiteralPath $userScriptPath -Value $batchContent -Encoding ASCII -Force
