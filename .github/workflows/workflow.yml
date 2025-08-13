@@ -24,30 +24,41 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Set dark mode and black background for administrator
+    - name: Set Administrator dark mode and black wallpaper
       shell: pwsh
       run: |
-        $user = 'administrator'
-        $profilePath = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match "\\$user$" } | Select-Object -First 1 -ExpandProperty LocalPath)
-        if (-not $profilePath) { $profilePath = "C:\Users\$user" }
-        $ntUserDat = Join-Path $profilePath 'NTUSER.DAT'
+        # Create a 1x1 black BMP accessible to all users
+        $bmpPath = "C:\Users\Public\Pictures\black.bmp"
+        New-Item -ItemType Directory -Force -Path (Split-Path $bmpPath) | Out-Null
+        Add-Type -AssemblyName System.Drawing
+        $bmp = New-Object System.Drawing.Bitmap 1,1
+        $bmp.SetPixel(0,0,[System.Drawing.Color]::Black)
+        $bmp.Save($bmpPath,[System.Drawing.Imaging.ImageFormat]::Bmp)
+        $bmp.Dispose()
 
-        if (Test-Path $ntUserDat) {
-          reg load HKU\AdminHive "$ntUserDat" | Out-Null
+        function Set-ForHive($hkuPath) {
+          New-Item -Path "$hkuPath\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
+          New-ItemProperty -Path "$hkuPath\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name AppsUseLightTheme -PropertyType DWord -Value 0 -Force | Out-Null
+          New-ItemProperty -Path "$hkuPath\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name SystemUsesLightTheme -PropertyType DWord -Value 0 -Force | Out-Null
 
-          New-Item -Path 'HKU:\AdminHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Force | Out-Null
-          Set-ItemProperty -Path 'HKU:\AdminHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Type DWord -Value 0
-          Set-ItemProperty -Path 'HKU:\AdminHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Type DWord -Value 0
+          New-Item -Path "$hkuPath\Control Panel\Desktop" -Force | Out-Null
+          New-ItemProperty -Path "$hkuPath\Control Panel\Desktop" -Name Wallpaper -PropertyType String -Value $bmpPath -Force | Out-Null
+          New-ItemProperty -Path "$hkuPath\Control Panel\Desktop" -Name TileWallpaper -PropertyType String -Value "0" -Force | Out-Null
+          New-ItemProperty -Path "$hkuPath\Control Panel\Desktop" -Name WallpaperStyle -PropertyType String -Value "10" -Force | Out-Null
+        }
 
-          New-Item -Path 'HKU:\AdminHive\Control Panel\Colors' -Force | Out-Null
-          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Colors' -Name 'Background' -Value '0 0 0'
+        # Apply to Administrator (if profile exists)
+        $adminHivePath = "$env:SystemDrive\Users\Administrator\NTUSER.DAT"
+        if (Test-Path $adminHivePath) {
+          reg load HKU\AdminHive $adminHivePath | Out-Null
+          try { Set-ForHive "HKU\AdminHive" } finally { reg unload HKU\AdminHive | Out-Null }
+        }
 
-          New-Item -Path 'HKU:\AdminHive\Control Panel\Desktop' -Force | Out-Null
-          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Desktop' -Name 'WallPaper' -Value ''
-          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Desktop' -Name 'TileWallpaper' -Value '0'
-          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Desktop' -Name 'WallpaperStyle' -Value '0'
-
-          reg unload HKU\AdminHive | Out-Null
+        # Also set Default profile so it applies on Administrator's first logon
+        $defaultHivePath = "$env:SystemDrive\Users\Default\NTUSER.DAT"
+        if (Test-Path $defaultHivePath) {
+          reg load HKU\DefUser $defaultHivePath | Out-Null
+          try { Set-ForHive "HKU\DefUser" } finally { reg unload HKU\DefUser | Out-Null }
         }
 
 
