@@ -24,23 +24,32 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Setup Dark Mode and Background for RDP Login
+    - name: Set dark mode and black background for administrator
       shell: pwsh
-      continue-on-error: true
       run: |
-        $scriptContent = @"
-        @echo off
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
-        powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)] public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni);' -Name SPI -Namespace Win32; [Win32.SPI]::SystemParametersInfo(20,0,'',3)"
-        taskkill /f /im explorer.exe
-        start explorer.exe
-        "@
-        $scriptPath = "C:\apply-theme.bat"
-        $scriptContent | Out-File -FilePath $scriptPath -Encoding Ascii
-        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value $scriptPath
+        $user = 'administrator'
+        $profilePath = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match "\\$user$" } | Select-Object -First 1 -ExpandProperty LocalPath)
+        if (-not $profilePath) { $profilePath = "C:\Users\$user" }
+        $ntUserDat = Join-Path $profilePath 'NTUSER.DAT'
+
+        if (Test-Path $ntUserDat) {
+          reg load HKU\AdminHive "$ntUserDat" | Out-Null
+
+          New-Item -Path 'HKU:\AdminHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Force | Out-Null
+          Set-ItemProperty -Path 'HKU:\AdminHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Type DWord -Value 0
+          Set-ItemProperty -Path 'HKU:\AdminHive\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Type DWord -Value 0
+
+          New-Item -Path 'HKU:\AdminHive\Control Panel\Colors' -Force | Out-Null
+          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Colors' -Name 'Background' -Value '0 0 0'
+
+          New-Item -Path 'HKU:\AdminHive\Control Panel\Desktop' -Force | Out-Null
+          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Desktop' -Name 'WallPaper' -Value ''
+          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Desktop' -Name 'TileWallpaper' -Value '0'
+          Set-ItemProperty -Path 'HKU:\AdminHive\Control Panel\Desktop' -Name 'WallpaperStyle' -Value '0'
+
+          reg unload HKU\AdminHive | Out-Null
+        }
+
 
     - name: Add 
       shell: pwsh
