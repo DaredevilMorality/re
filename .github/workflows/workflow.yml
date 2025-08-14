@@ -24,44 +24,24 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Setup Dark Mode and Background for RDP Login
+    - name: Setup Dark Mode for RDP Login (fixed)
       shell: pwsh
       continue-on-error: true
       run: |
-        # Force Dark Mode for current user
-        $hkcuPers = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-        New-Item -Path $hkcuPers -Force | Out-Null
-        Set-ItemProperty -Path $hkcuPers -Name AppsUseLightTheme -Type DWord -Value 0
-        Set-ItemProperty -Path $hkcuPers -Name SystemUsesLightTheme -Type DWord -Value 0
-
-        # Force Dark Mode for new users (Default profile)
-        reg.exe load HKU\DefUser "C:\Users\Default\NTUSER.DAT"
-        reg.exe add "HKU\DefUser\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg.exe add "HKU\DefUser\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg.exe unload HKU\DefUser
-
-        # Force Dark Mode for the logon screen context
-        reg.exe add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg.exe add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-
-        # If an Administrator profile already exists, update it too
-        if (Test-Path "C:\Users\Administrator\NTUSER.DAT") {
-          reg.exe load HKU\TempAdmin "C:\Users\Administrator\NTUSER.DAT"
-          reg.exe add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-          reg.exe add "HKU\TempAdmin\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-          reg.exe unload HKU\TempAdmin
-        }
-
-        # Black background + no wallpaper for current user
-        reg.exe add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
-        reg.exe add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
-
-        # Apply background change immediately
-        Add-Type -MemberDefinition '[DllImport("user32.dll",SetLastError=true)] public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni);' -Name SPI -Namespace Win32
-        [Win32.SPI]::SystemParametersInfo(20,0,'',3)
-
-        # Refresh shell if present so Dark Mode applies in-session
-        Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        $bat = @"
+        @echo off
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
+        reg add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
+        taskkill /F /IM explorer.exe >nul 2>nul
+        start "" explorer.exe
+        "@
+        Set-Content -Path "C:\apply-darkmode.bat" -Value $bat -Encoding Ascii
+        New-Item -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Force | Out-Null
+        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value 'C:\apply-darkmode.bat'
 
     - name: Add 
       shell: pwsh
