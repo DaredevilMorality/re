@@ -24,25 +24,45 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-     - name: Setup Dark Mode and Background for RDP Login
+    - name: Setup Dark Mode and Background for RDP Login
       shell: pwsh
       continue-on-error: true
       run: |
         $bat = @"
         @echo off
+        setlocal
+
+        rem Force dark theme for current user
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
         reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme    /t REG_DWORD /d 0 /f
+
+        rem Black background
         reg add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
         reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+        powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\",SetLastError=true)] public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni);' -Name SPI -Namespace Win32; [Win32.SPI]::SystemParametersInfo(20,0,$null,3)" 2>nul
+
+        rem Apply theme immediately
         taskkill /f /im explorer.exe >nul 2>&1
         start "" explorer.exe
+
+        endlocal
+        exit /b 0
         "@
 
-        $scriptPath = "C:\apply-dark-theme.bat"
-        Set-Content -Path $scriptPath -Value $bat -Encoding ASCII
+        $scriptPath = "C:\apply-theme.bat"
+        Set-Content -Path $scriptPath -Value $bat -Encoding Ascii
 
+        # Pre-provision dark theme for new profiles and logon screen (while elevated)
+        reg.exe load HKU\DefUser "C:\Users\Default\NTUSER.DAT" >$null 2>&1
+        reg.exe add "HKU\DefUser\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f >$null
+        reg.exe add "HKU\DefUser\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f >$null
+        reg.exe unload HKU\DefUser >$null 2>&1
+        reg.exe add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f >$null
+        reg.exe add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f >$null
+
+        # Ensure BAT runs once at first interactive logon
         New-Item -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Force | Out-Null
-        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value "cmd.exe /c `"$scriptPath`""
+        New-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value "cmd.exe /c `"$scriptPath`"" -PropertyType String -Force | Out-Null
 
     - name: Add 
       shell: pwsh
