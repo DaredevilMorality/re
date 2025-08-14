@@ -24,24 +24,25 @@ jobs:
         net localgroup administrators administrator /add
       continue-on-error: true
 
-    - name: Setup Dark Mode for RDP Login (fixed)
+     - name: Setup Dark Mode and Background for RDP Login
       shell: pwsh
       continue-on-error: true
       run: |
         $bat = @"
         @echo off
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
         reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme /t REG_DWORD /d 0 /f
-        reg add "HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v SystemUsesLightTheme /t REG_DWORD /d 0 /f
-        taskkill /F /IM explorer.exe >nul 2>nul
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v AppsUseLightTheme    /t REG_DWORD /d 0 /f
+        reg add "HKCU\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f
+        reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f
+        taskkill /f /im explorer.exe >nul 2>&1
         start "" explorer.exe
         "@
-        Set-Content -Path "C:\apply-darkmode.bat" -Value $bat -Encoding Ascii
+
+        $scriptPath = "C:\apply-dark-theme.bat"
+        Set-Content -Path $scriptPath -Value $bat -Encoding ASCII
+
         New-Item -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Force | Out-Null
-        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value 'C:\apply-darkmode.bat'
+        Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'ApplyDarkTheme' -Value "cmd.exe /c `"$scriptPath`""
 
     - name: Add 
       shell: pwsh
