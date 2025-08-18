@@ -73,13 +73,14 @@ jobs:
     - name: Wait
       shell: pwsh
       run: |
-        $found = $false
-        while (-not $found) {
+        $pattern = 'https://[a-zA-Z0-9-]+\.trycloudflare\.com'
+        $tunnelURL = $null
+        while (-not $tunnelURL) {
           Start-Sleep -Milliseconds 100
-          $logContent = Get-Content "$PWD\cloudflared-log.log" -Raw
-          if ($logContent -match "(https:\/\/[a-zA-Z0-9\-]+\.trycloudflare\.com)") {
-            $tunnelURL = $matches[1]
-            $found = $true
+          $logContent = Get-Content "$PWD\cloudflared-log.log" -Raw -ErrorAction SilentlyContinue
+          if ($null -ne $logContent) {
+            $m = [regex]::Match($logContent, $pattern)
+            if ($m.Success) { $tunnelURL = $m.Value }
           }
         }
 
@@ -93,9 +94,7 @@ jobs:
           "Authorization" = "Bearer $server_secret"
           "Content-Type"  = "application/json"
         }
-        $body = @{
-          "tunnel_url" = $tunnelURL
-        } | ConvertTo-Json
+        $body = @{ tunnel_url = $tunnelURL } | ConvertTo-Json
 
         Invoke-RestMethod -Uri $server_url -Method POST -Headers $headers -Body $body
 
